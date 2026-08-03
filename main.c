@@ -19,7 +19,7 @@
 #define RADAR_CIRCLE_RAD 320
 
 #define MT_TO_FT 3.281
-#define AIRPORT_SPAN 0.5f
+#define AIRPORT_SPAN 0.25f
 
 static char current_airport[5] = "LHR";
 static char current_airport_name[64] = "London Heathrow";
@@ -437,13 +437,15 @@ void DrawAirportName(void) {
 int main(void) {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Flight Radar");
     if (!IsWindowReady()) return 1;
-    SetTargetFPS(0);
+    SetTargetFPS(60);
+
+    float angle = 0.0f;
 
     // Default
     UpdateAirportBoundingBox("LHR");
     SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
 
-    float angle = 0.0f;
+
 
     while (!WindowShouldClose()) {
         // Update
@@ -452,23 +454,22 @@ int main(void) {
 
         // Draw
         BeginDrawing();
-        ClearBackground(WINDOW_COLOUR);
+            ClearBackground(WINDOW_COLOUR);
 
-        DrawRadarOutline();
-        DrawRadarSpinner(angle);
-        DrawPlanes(cached_json);
+            DrawRadarOutline();
+            DrawRadarSpinner(angle);
+            DrawPlanes(cached_json);
 
-        DrawSelectedPlaneInfo();
+            DrawSelectedPlaneInfo();
 
-        DrawAirport(current_airport);
-        DrawAirportName();
+            DrawAirport(current_airport);
+            DrawAirportName();
 
-        DrawRadarScaleIndicator();
+            DrawRadarScaleIndicator();
 
-        if (show_airport_menu) {
-            DrawAirportMenu();
-        }
-
+            if (show_airport_menu) {
+                DrawAirportMenu();
+            }
         EndDrawing();
     }
 
