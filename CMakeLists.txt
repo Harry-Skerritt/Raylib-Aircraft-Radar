@@ -13,12 +13,26 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
         GIT_TAG        master
 )
-
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+        cjson
+        GIT_REPOSITORY  https://github.com/DaveGamble/cJSON.git
+        GIT_TAG         v1.7.18
+)
+
+
 FetchContent_MakeAvailable(raylib)
+FetchContent_MakeAvailable(cjson)
 
 add_executable(${PROJECT_NAME} main.c)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE
         raylib
         CURL::libcurl
+        cjson
+)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+        ${cjson_SOURCE_DIR}
 )

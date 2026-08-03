@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-
+#include <cJSON.h>
 #include "raylib.h"
 
 #define WINDOW_WIDTH 800
@@ -15,6 +15,28 @@
 #define RADAR_PADDING 50
 #define RADAR_SPEED 100
 #define RADAR_TRAIL_COUNT 200
+#define RADAR_CIRCLE_RAD 320
+
+#define MT_TO_FT 3.281
+
+#define LA_MIN 51.0698
+#define LA_MAX 51.8823
+#define LO_MIN -1.2271
+#define LO_MAX 0.2479
+
+// General
+Vector2 MapGPSToRadar(float lat, float lon, float lamin, float lamax, float lomin, float lomax) {
+    float cx = WINDOW_WIDTH / 2.0f;
+    float cy = WINDOW_HEIGHT / 2.0f;
+
+    float norm_x = (lon - lomin) / (lomax - lomin);
+    float norm_y = (lat - lamin) / (lamax - lamin);
+
+    float screen_x = cx + (norm_x - 0.5f) * (RADAR_CIRCLE_RAD * 2.0f);
+    float screen_y = cy - (norm_y - 0.5f) * (RADAR_CIRCLE_RAD * 2.0f);
+
+    return (Vector2){ screen_x, screen_y };
+}
 
 // CURL
 struct MemoryStruct {
@@ -77,22 +99,46 @@ char* GetEndpoint(const char *url) {
     return chunk.memory;
 }
 
-void CheckLocalAirspace(void) {
-    // London, UK: lamin = 51.25, lamax = 51.75, lomin = -0.50, lomax = 0.00
+// JSON Parsing
+static float fetch_timer = 0.0f;
+static char *cached_json = NULL;
 
-    char url[256];
-    snprintf(url, sizeof(url),
-             "https://opensky-network.org/api/states/all?lamin=51.25&lamax=51.75&lomin=-0.50&lomax=0.00");
+void UpdatePlaneData() {
+    fetch_timer += GetFrameTime();
 
-    printf("Fetching aircraft data for the area...\n");
-    char *json_response = GetEndpoint(url);
-
-    if (json_response) {
-        printf("Successfully fetched airspace data!\n");
-        free(json_response);
-    } else {
-        printf("Failed to fetch aircraft data.\n");
+    if (fetch_timer < 10.0f && cached_json != NULL) {
+        return;
     }
+    fetch_timer = 0.0f;
+
+
+    char url[512];
+    snprintf(url, sizeof(url),
+             "https://opensky-network.org/api/states/all?lamin=%.4f&lamax=%.4f&lomin=%.4f&lomax=%.4f",
+             LA_MIN, LA_MAX, LO_MIN, LO_MAX);
+
+    printf("URL: %s\n", url);
+
+    printf("Fetching aircraft data!\n");
+    char* new_json = GetEndpoint(url);
+
+    if (!new_json) {
+        printf("Failed to fetch aircraft data.\n");
+        return;
+    }
+
+    if (cached_json) {
+        free(cached_json);
+    }
+    cached_json = new_json;
+
+    cJSON *root = cJSON_Parse(cached_json);
+    if (!root) {
+        printf("Failed to parse JSON.\n");
+        return;
+    }
+
+    cJSON_Delete(root);
 }
 
 // Raylib
@@ -112,7 +158,7 @@ void DrawRadarOutline() {
     DrawLineV((Vector2){ cx - cos_val, cy + sin_val }, (Vector2){ cx + cos_val, cy - sin_val }, RADAR_COLOUR);
 
     // Draw Circles
-    for (int radius = 80; radius <= 320; radius += 80) {
+    for (int radius = 80; radius <= RADAR_CIRCLE_RAD; radius += 80) {
         DrawCircleLines((int)cx, (int)cy, (float)radius, RADAR_COLOUR);
     }
 }
@@ -143,6 +189,46 @@ void DrawRadarSpinner(const float current_angle) {
     DrawLineV(centre, (Vector2){ centre.x + main_cos, centre.y + main_sin }, GREEN);
 }
 
+void DrawPlanes(const char *json_data) {
+    if (!json_data) return;
+
+    cJSON *root = cJSON_Parse(json_data);
+    if (!root) return;
+
+    cJSON *states = cJSON_GetObjectItemCaseSensitive(root, "states");
+    if (cJSON_IsArray(states)) {
+        cJSON *plane = NULL;
+
+        int plane_count = cJSON_GetArraySize(states);
+        DrawText(TextFormat("Total Planes: %d", plane_count),10, 10, 20, GREEN);
+
+        cJSON_ArrayForEach(plane, states) {
+            cJSON *call_sign = cJSON_GetArrayItem(plane, 1);
+            cJSON *longitude = cJSON_GetArrayItem(plane, 5);
+            cJSON *latitude = cJSON_GetArrayItem(plane, 6);
+            cJSON *baro_alt_m = cJSON_GetArrayItem(plane, 7);
+
+            if (cJSON_IsString(call_sign) && cJSON_IsNumber(longitude) && cJSON_IsNumber(latitude)) {
+                float lon = (float)longitude->valuedouble;
+                float lat = (float)latitude->valuedouble;
+                float alt_ft = (float)baro_alt_m->valuedouble * MT_TO_FT;
+
+                Vector2 pos = MapGPSToRadar(lat, lon, LA_MIN, LA_MAX, LO_MIN, LO_MAX);
+
+                DrawCircleV(pos, 4.0f, GREEN);
+                DrawText(call_sign->valuestring, (int)pos.x + 6, (int)pos.y - 4, 10, LIGHTGRAY);
+            }
+        }
+    }
+    cJSON_Delete(root);
+}
+
+void DrawAirport(const char* airport_tag) {
+    int text_size = MeasureText(airport_tag, 20);
+    DrawText(airport_tag, WINDOW_WIDTH / 2 - text_size / 2, WINDOW_HEIGHT / 2 + 20, 20, GREEN);
+
+}
+
 int main(void) {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Plane Radar");
     if (!IsWindowReady()) return 1;
@@ -150,19 +236,19 @@ int main(void) {
 
     float angle = 0.0f;
 
-    CheckLocalAirspace();
-
     while (!WindowShouldClose()) {
         // Update
         angle += GetFrameTime() * RADAR_SPEED;
+        UpdatePlaneData();
 
         // Draw
         BeginDrawing();
-        DrawFPS(10, 10);
         ClearBackground(WINDOW_COLOUR);
 
         DrawRadarOutline();
         DrawRadarSpinner(angle);
+        DrawPlanes(cached_json);
+        DrawAirport("LHR");
 
         EndDrawing();
     }
