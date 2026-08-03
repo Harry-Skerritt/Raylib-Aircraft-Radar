@@ -25,7 +25,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 FetchContent_MakeAvailable(cjson)
 
-add_executable(${PROJECT_NAME} main.c)
+add_executable(${PROJECT_NAME} MACOSX_BUNDLE main.c)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         raylib
@@ -36,3 +36,23 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${cjson_SOURCE_DIR}
 )
+
+if (APPLE)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            "-framework OpenGL"
+            "-framework Cocoa"
+            "-framework IOKit"
+            "-framework CoreVideo"
+            "-framework SystemConfiguration"
+            "-framework Security"
+    )
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.harryskerritt.flightradar"
+            MACOSX_BUNDLE_BUNDLE_NAME "FlightRadar"
+            MACOSX_BUNDLE_ICON_FILE "icon.icns"
+    )
+
+    set_source_files_properties(icon.icns PROPERTIES MACOSX_BUNDLE_LOCATION_PATH "Resources")
+    target_sources(${PROJECT_NAME} PRIVATE icon.icns)
+endif ()
