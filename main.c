@@ -18,7 +18,7 @@
 #define RADAR_CIRCLE_RAD 320
 
 #define MT_TO_FT 3.281
-#define AIRPORT_SPAN 0.25f
+#define AIRPORT_SPAN 0.5f
 
 static char current_airport[5] = "LHR";
 static char current_airport_name[64] = "London Heathrow";
@@ -192,9 +192,9 @@ void UpdatePlaneData() {
              "https://opensky-network.org/api/states/all?lamin=%.4f&lamax=%.4f&lomin=%.4f&lomax=%.4f",
              la_min, la_max, lo_min, lo_max);
 
-    printf("URL: %s\n", url);
+    //printf("%s\n", url);
 
-    printf("Fetching airspace for %s...\n", current_airport);
+    //printf("Fetching airspace for %s...\n", current_airport);
     char* new_json = GetEndpoint(url);
 
     if (!new_json) {
@@ -207,6 +207,18 @@ void UpdatePlaneData() {
     }
     cached_json = new_json;
 }
+
+// Selecting Planes
+typedef struct {
+    char callsign[16];
+    float lat;
+    float lon;
+    float alt_ft;
+    char from[64];
+    bool active;
+} SelectedPlane;
+
+static SelectedPlane selected_plane = { .active = false };
 
 // Raylib
 void DrawRadarOutline() {
@@ -269,20 +281,39 @@ void DrawPlanes(const char *json_data) {
         int plane_count = cJSON_GetArraySize(states);
         DrawText(TextFormat("Total Planes: %d", plane_count),10, 10, 20, GREEN);
 
+        Vector2 mouse_pos = GetMousePosition();
+        bool mouse_clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
         cJSON_ArrayForEach(plane, states) {
             cJSON *call_sign = cJSON_GetArrayItem(plane, 1);
             cJSON *longitude = cJSON_GetArrayItem(plane, 5);
             cJSON *latitude = cJSON_GetArrayItem(plane, 6);
             cJSON *baro_alt_m = cJSON_GetArrayItem(plane, 7);
+            cJSON *from_apt = cJSON_GetArrayItem(plane, 2);
 
             if (cJSON_IsString(call_sign) && cJSON_IsNumber(longitude) && cJSON_IsNumber(latitude)) {
                 float lon = (float)longitude->valuedouble;
                 float lat = (float)latitude->valuedouble;
-                float alt_ft = (float)baro_alt_m->valuedouble * MT_TO_FT;
+
+                float alt_ft = 0.0f;
+                if (cJSON_IsNumber(baro_alt_m)) {
+                    alt_ft = (float)baro_alt_m->valuedouble * MT_TO_FT;
+                }
 
                 Vector2 pos = MapGPSToRadar(lat, lon, la_min, la_max, lo_min, lo_max);
+                bool is_hovered = CheckCollisionPointCircle(mouse_pos, pos, 8.0f);
 
-                DrawCircleV(pos, 4.0f, GREEN);
+                if (is_hovered && mouse_clicked) {
+                    snprintf(selected_plane.callsign, sizeof(selected_plane.callsign), "%s", call_sign->valuestring);
+                    selected_plane.lat = lat;
+                    selected_plane.lon = lon;
+                    selected_plane.alt_ft = alt_ft;
+                    snprintf(selected_plane.from, sizeof(selected_plane.from), "%s", from_apt->valuestring);
+                    selected_plane.active = true;
+                }
+
+                Color dot_color = (selected_plane.active && strcmp(selected_plane.callsign, call_sign->valuestring) == 0) ? YELLOW : GREEN;
+                DrawCircleV(pos, is_hovered ? 6.0f : 4.0f, dot_color);
                 DrawText(call_sign->valuestring, (int)pos.x + 6, (int)pos.y - 4, 10, LIGHTGRAY);
             }
         }
@@ -300,12 +331,34 @@ void DrawAirportName(const char* airport_name) {
     DrawText(airport_name, WINDOW_WIDTH - text_size - 10, 10, 20, GREEN);
 }
 
+void DrawSelectedPlaneInfo() {
+    DrawRectangle(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, (Color){10, 15, 10, 255 });
+    DrawRectangleLines(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, RADAR_COLOUR);
+
+    if (selected_plane.active) {
+        DrawText(TextFormat("SELECTED FLIGHT: %s", selected_plane.callsign), 20, WINDOW_HEIGHT - 50, 16, YELLOW);
+        DrawText(TextFormat("Latitude: %.4f", selected_plane.lat), 20, WINDOW_HEIGHT - 25, 14, LIGHTGRAY);
+        DrawText(TextFormat("Longitude: %.4f", selected_plane.lon), 170, WINDOW_HEIGHT - 25, 14, LIGHTGRAY);
+
+        if (selected_plane.alt_ft == 0.0f)
+            DrawText(TextFormat("Altitude: - ft"), 320, WINDOW_HEIGHT - 25, 14, LIGHTGRAY);
+        else
+            DrawText(TextFormat("Altitude: %.0f ft", selected_plane.alt_ft), 320, WINDOW_HEIGHT - 25, 14, LIGHTGRAY);
+
+        DrawText(TextFormat("From: %s", selected_plane.from), 470, WINDOW_HEIGHT - 25, 14, LIGHTGRAY);
+    } else {
+        DrawText("Click on a plane dot to view telemetry data...", 20, WINDOW_HEIGHT - 38, 14, DARKGREEN);
+    }
+}
+
 int main(void) {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Plane Radar");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Flight Radar");
     if (!IsWindowReady()) return 1;
     SetTargetFPS(0);
 
-    UpdateAirportBoundingBox("LGW");
+    // Default
+    UpdateAirportBoundingBox("LHR");
+    SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
 
     float angle = 0.0f;
 
@@ -321,6 +374,8 @@ int main(void) {
         DrawRadarOutline();
         DrawRadarSpinner(angle);
         DrawPlanes(cached_json);
+
+        DrawSelectedPlaneInfo();
 
         DrawAirport(current_airport);
         DrawAirportName(current_airport_name);
