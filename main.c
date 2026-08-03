@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+
 #include "raylib.h"
 
 #define WINDOW_WIDTH 800
@@ -12,6 +16,86 @@
 #define RADAR_SPEED 100
 #define RADAR_TRAIL_COUNT 200
 
+// CURL
+struct MemoryStruct {
+    char *memory;
+    size_t size;
+};
+
+static size_t WriteMemoryCallback(const void *contents, const size_t size, const size_t nmemb, void *user) {
+    size_t real_size = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)user;
+
+    char *ptr = realloc(mem->memory, mem->size + real_size + 1);
+    if (!ptr) {
+        printf("Not enough memory (realloc returned NULL)\n");
+        return 0;
+    }
+
+    mem->memory = ptr;
+    memcpy(&(mem->memory[mem->size]), contents, real_size);
+    mem->size += real_size;
+    mem->memory[mem->size] = 0;
+
+    return real_size;
+}
+
+char* GetEndpoint(const char *url) {
+    struct MemoryStruct chunk;
+
+    chunk.memory = malloc(1);
+    chunk.size = 0;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    CURL *curl = curl_easy_init();
+
+    if (!curl) {
+        fprintf(stderr, "Curl Init Failed");
+        free(chunk.memory);
+        chunk.memory = NULL;
+        curl_global_cleanup();
+        return chunk.memory;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "C-Radar-App/1.0");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    const CURLcode res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        fprintf(stderr, "Request failed: %s\n", curl_easy_strerror(res));
+        free(chunk.memory);
+        chunk.memory = NULL;
+    }
+
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+
+    return chunk.memory;
+}
+
+void CheckLocalAirspace(void) {
+    // London, UK: lamin = 51.25, lamax = 51.75, lomin = -0.50, lomax = 0.00
+
+    char url[256];
+    snprintf(url, sizeof(url),
+             "https://opensky-network.org/api/states/all?lamin=51.25&lamax=51.75&lomin=-0.50&lomax=0.00");
+
+    printf("Fetching aircraft data for the area...\n");
+    char *json_response = GetEndpoint(url);
+
+    if (json_response) {
+        printf("Successfully fetched airspace data!\n");
+        free(json_response);
+    } else {
+        printf("Failed to fetch aircraft data.\n");
+    }
+}
+
+// Raylib
 void DrawRadarOutline() {
     const float cx = WINDOW_WIDTH / 2.0f;
     const float cy = WINDOW_HEIGHT / 2.0f;
@@ -65,6 +149,8 @@ int main(void) {
     SetTargetFPS(0);
 
     float angle = 0.0f;
+
+    CheckLocalAirspace();
 
     while (!WindowShouldClose()) {
         // Update

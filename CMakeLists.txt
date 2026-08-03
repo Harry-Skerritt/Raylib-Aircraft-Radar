@@ -3,6 +3,9 @@ project(Radar C)
 
 set(CMAKE_C_STANDARD 11)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+find_package(CURL REQUIRED)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -15,4 +18,7 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(raylib)
 
 add_executable(${PROJECT_NAME} main.c)
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+        raylib
+        CURL::libcurl
+)
