@@ -11,6 +11,7 @@
 
 #define WINDOW_COLOUR (Color){ 16, 23, 16, 255 }
 #define RADAR_COLOUR (Color){ 26, 105, 16, 255 }
+#define UI_BACKGROUND_COLOUR (Color){ 10, 20, 10, 245 }
 
 #define RADAR_PADDING 50
 #define RADAR_SPEED 100
@@ -81,7 +82,6 @@ bool GetAirportName(const char* iata, const char* out_name) {
 void UpdateAirportBoundingBox(const char *icao) {
     float center_lat, center_lon;
 
-    // Look up airport coordinates, fallback to Heathrow if not found
     if (GetAirportCoords(icao, &center_lat, &center_lon)) {
         strncpy(current_airport, icao, 4);
         if (!GetAirportName(icao, current_airport_name)) {
@@ -111,6 +111,12 @@ Vector2 MapGPSToRadar(float lat, float lon, float lamin, float lamax, float lomi
     float screen_y = cy - (norm_y - 0.5f) * (RADAR_CIRCLE_RAD * 2.0f);
 
     return (Vector2){ screen_x, screen_y };
+}
+
+float GetRadarRangeMiles() {
+    float total_span_degrees = AIRPORT_SPAN * 2.0f;
+    float miles_per_degree_lat = 69.0f;
+    return total_span_degrees * miles_per_degree_lat;
 }
 
 // CURL
@@ -326,13 +332,8 @@ void DrawAirport(const char* airport_tag) {
     DrawText(airport_tag, WINDOW_WIDTH / 2 - text_size / 2, WINDOW_HEIGHT / 2 + 20, 20, GREEN);
 }
 
-void DrawAirportName(const char* airport_name) {
-    int text_size = MeasureText(airport_name, 20);
-    DrawText(airport_name, WINDOW_WIDTH - text_size - 10, 10, 20, GREEN);
-}
-
 void DrawSelectedPlaneInfo() {
-    DrawRectangle(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, (Color){10, 15, 10, 255 });
+    DrawRectangle(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, UI_BACKGROUND_COLOUR);
     DrawRectangleLines(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, RADAR_COLOUR);
 
     if (selected_plane.active) {
@@ -349,6 +350,88 @@ void DrawSelectedPlaneInfo() {
     } else {
         DrawText("Click on a plane dot to view telemetry data...", 20, WINDOW_HEIGHT - 38, 14, DARKGREEN);
     }
+}
+
+void DrawRadarScaleIndicator() {
+    float range_miles = GetRadarRangeMiles();
+    float range_km = range_miles * 1.60934f;
+
+    char scale_text[64];
+    snprintf(scale_text, sizeof(scale_text), "View Window: ~%.1f mi (~%.1f km) wide", range_miles, range_km);
+
+    int y_pos = WINDOW_HEIGHT - 85;
+    DrawText(scale_text, 20, y_pos, 16, DARKGREEN);
+}
+
+// Airport Selector
+static bool show_airport_menu = false;
+
+void DrawAirportMenu() {
+    int total_airports = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
+
+    int menu_width = 300;
+    int menu_height = 400;
+    int menu_x = WINDOW_WIDTH - menu_width - 10;
+    int menu_y = 40;
+
+    // Draw Background
+    DrawRectangle(menu_x, menu_y, menu_width, menu_height, UI_BACKGROUND_COLOUR);
+    DrawRectangleLines(menu_x, menu_y, menu_width, menu_height, GREEN);
+    DrawText("SELECT AIRPORT:", menu_x + 10, menu_y + 10, 16, YELLOW);
+
+    Vector2 mouse_pos = GetMousePosition();
+    bool mouse_clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+    int start_y = menu_y + 35;
+    int item_height = 20;
+
+    // Draw Menu + Handle Mouse
+    for (int i = 0; i < total_airports; i++) {
+        int item_y = start_y + (i * item_height);
+        Rectangle item_rect = { (float)menu_x + 5, (float)item_y, (float)(menu_width - 10), (float)item_height };
+
+        bool is_hovered = CheckCollisionPointRec(mouse_pos, item_rect);
+
+        if (is_hovered) {
+            DrawRectangleRec(item_rect, (Color){ 30, 80, 30, 255 });
+            if (mouse_clicked) {
+                UpdateAirportBoundingBox(AIRPORT_DB[i].code);
+                SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
+                show_airport_menu = false;
+
+                fetch_timer = 10.0f;
+                if (cached_json) {
+                    free(cached_json);
+                    cached_json = NULL;
+                }
+                break;
+            }
+        }
+
+        DrawText(TextFormat("[%s] %s", AIRPORT_DB[i].code, AIRPORT_DB[i].name), menu_x + 10, item_y + 2, 12, LIGHTGRAY);
+    }
+}
+
+void DrawAirportName(void) {
+    char display_text[128];
+    snprintf(display_text, sizeof(display_text), "%s", current_airport_name);
+
+    int font_size = 20;
+    int text_width = MeasureText(display_text, font_size);
+    int x = WINDOW_WIDTH - text_width - 15;
+    int y = 10;
+
+    Rectangle btn_rect = { (float)(x - 5), (float)(y - 2), (float)(text_width + 10), (float)(font_size + 6) };
+    bool is_hovered = CheckCollisionPointRec(GetMousePosition(), btn_rect);
+
+    if (is_hovered) {
+        DrawRectangleRec(btn_rect, (Color){ 20, 50, 20, 255 });
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            show_airport_menu = !show_airport_menu;
+        }
+    }
+
+    DrawText(display_text, x, y, font_size, GREEN);
 }
 
 int main(void) {
@@ -378,7 +461,13 @@ int main(void) {
         DrawSelectedPlaneInfo();
 
         DrawAirport(current_airport);
-        DrawAirportName(current_airport_name);
+        DrawAirportName();
+
+        DrawRadarScaleIndicator();
+
+        if (show_airport_menu) {
+            DrawAirportMenu();
+        }
 
         EndDrawing();
     }
