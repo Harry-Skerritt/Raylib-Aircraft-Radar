@@ -18,11 +18,86 @@
 #define RADAR_CIRCLE_RAD 320
 
 #define MT_TO_FT 3.281
+#define AIRPORT_SPAN 0.25f
 
-#define LA_MIN 51.0698
-#define LA_MAX 51.8823
-#define LO_MIN -1.2271
-#define LO_MAX 0.2479
+static char current_airport[5] = "LHR";
+static char current_airport_name[64] = "London Heathrow";
+float la_min, la_max, lo_min, lo_max;
+
+// Airport DB
+typedef struct {
+    char code[5]; // IATA
+    char name[64]; // Full Name
+    float lat;
+    float lon;
+} Airport;
+
+static const Airport AIRPORT_DB[] = {
+    { "LHR", "London Heathrow",          51.4700f,  -0.4543f },
+    { "LGW", "London Gatwick",           51.1536f,  -0.1822f },
+    { "STN", "London Stansted",          51.8850f,   0.2350f },
+    { "LTN", "London Luton",             51.8747f,  -0.3683f },
+    { "LCY", "London City",              51.5053f,   0.0553f },
+    { "SEN", "Southend",                 51.5706f,   0.6936f },
+    { "MAN", "Manchester",               53.3553f,  -2.2775f },
+    { "BHX", "Birmingham",               52.4539f,  -1.7480f },
+    { "BRS", "Bristol",                  51.3828f,  -2.7192f },
+    { "NCL", "Newcastle",                55.0380f,  -1.6896f },
+    { "LPL", "Liverpool",                53.3336f,  -2.8497f },
+    { "LBA", "Leeds Bradford",           53.8658f,  -1.6606f },
+    { "EMA", "East Midlands",            52.8311f,  -1.3281f },
+    { "BOH", "Bournemouth",              50.7805f,  -1.8396f },
+    { "EXT", "Exeter",                   50.7344f,  -3.4139f },
+    { "MME", "Teesside International",   54.5092f,  -1.4294f },
+
+    { "ORM", "Sywell Aerodrome",         52.3053f,  -0.7922f },
+    { "EGTH", "Old Warden Aerodrome",    52.0867f,  -0.3186f }
+};
+
+
+bool GetAirportCoords(const char* iata, float *out_lat, float *out_lon) {
+    int count = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
+    for (int i = 0; i < count; i++) {
+        if (strcasecmp(AIRPORT_DB[i].code, iata) == 0) {
+            *out_lat = AIRPORT_DB[i].lat;
+            *out_lon = AIRPORT_DB[i].lon;
+            return true;
+        }
+    }
+    return false; // Not Found
+}
+
+bool GetAirportName(const char* iata, const char* out_name) {
+    int count = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
+    for (int i = 0; i < count; i++) {
+        if (strcasecmp(AIRPORT_DB[i].code, iata) == 0) {
+            strcpy(out_name, AIRPORT_DB[i].name);
+            return true;
+        }
+    }
+    return false; // Not Found
+}
+
+void UpdateAirportBoundingBox(const char *icao) {
+    float center_lat, center_lon;
+
+    // Look up airport coordinates, fallback to Heathrow if not found
+    if (GetAirportCoords(icao, &center_lat, &center_lon)) {
+        strncpy(current_airport, icao, 4);
+        if (!GetAirportName(icao, current_airport_name)) {
+            strncpy(current_airport_name, "Unknown Name", 64);
+        }
+    } else {
+        TraceLog(LOG_WARNING, "Airport %s not found in DB, defaulting to LHR", icao);
+        center_lat = 51.4700;
+        center_lon = -0.4543f;
+    }
+
+    la_min = center_lat - AIRPORT_SPAN;
+    la_max = center_lat + AIRPORT_SPAN;
+    lo_min = center_lon - AIRPORT_SPAN;
+    lo_max = center_lon + AIRPORT_SPAN;
+}
 
 // General
 Vector2 MapGPSToRadar(float lat, float lon, float lamin, float lamax, float lomin, float lomax) {
@@ -115,15 +190,15 @@ void UpdatePlaneData() {
     char url[512];
     snprintf(url, sizeof(url),
              "https://opensky-network.org/api/states/all?lamin=%.4f&lamax=%.4f&lomin=%.4f&lomax=%.4f",
-             LA_MIN, LA_MAX, LO_MIN, LO_MAX);
+             la_min, la_max, lo_min, lo_max);
 
     printf("URL: %s\n", url);
 
-    printf("Fetching aircraft data!\n");
+    printf("Fetching airspace for %s...\n", current_airport);
     char* new_json = GetEndpoint(url);
 
     if (!new_json) {
-        printf("Failed to fetch aircraft data.\n");
+        printf("Failed to fetch airspace data.\n");
         return;
     }
 
@@ -131,14 +206,6 @@ void UpdatePlaneData() {
         free(cached_json);
     }
     cached_json = new_json;
-
-    cJSON *root = cJSON_Parse(cached_json);
-    if (!root) {
-        printf("Failed to parse JSON.\n");
-        return;
-    }
-
-    cJSON_Delete(root);
 }
 
 // Raylib
@@ -213,7 +280,7 @@ void DrawPlanes(const char *json_data) {
                 float lat = (float)latitude->valuedouble;
                 float alt_ft = (float)baro_alt_m->valuedouble * MT_TO_FT;
 
-                Vector2 pos = MapGPSToRadar(lat, lon, LA_MIN, LA_MAX, LO_MIN, LO_MAX);
+                Vector2 pos = MapGPSToRadar(lat, lon, la_min, la_max, lo_min, lo_max);
 
                 DrawCircleV(pos, 4.0f, GREEN);
                 DrawText(call_sign->valuestring, (int)pos.x + 6, (int)pos.y - 4, 10, LIGHTGRAY);
@@ -226,13 +293,19 @@ void DrawPlanes(const char *json_data) {
 void DrawAirport(const char* airport_tag) {
     int text_size = MeasureText(airport_tag, 20);
     DrawText(airport_tag, WINDOW_WIDTH / 2 - text_size / 2, WINDOW_HEIGHT / 2 + 20, 20, GREEN);
+}
 
+void DrawAirportName(const char* airport_name) {
+    int text_size = MeasureText(airport_name, 20);
+    DrawText(airport_name, WINDOW_WIDTH - text_size - 10, 10, 20, GREEN);
 }
 
 int main(void) {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Plane Radar");
     if (!IsWindowReady()) return 1;
     SetTargetFPS(0);
+
+    UpdateAirportBoundingBox("LGW");
 
     float angle = 0.0f;
 
@@ -248,11 +321,14 @@ int main(void) {
         DrawRadarOutline();
         DrawRadarSpinner(angle);
         DrawPlanes(cached_json);
-        DrawAirport("LHR");
+
+        DrawAirport(current_airport);
+        DrawAirportName(current_airport_name);
 
         EndDrawing();
     }
 
+    if (cached_json) free(cached_json);
     CloseWindow();
     return 0;
 }
