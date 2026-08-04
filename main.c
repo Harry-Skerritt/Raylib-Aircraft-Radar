@@ -6,6 +6,8 @@
 #include <cJSON.h>
 #include "raylib.h"
 
+// Todo: Add OAuth2 for more requests
+
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
 
@@ -19,7 +21,7 @@
 #define RADAR_CIRCLE_RAD 320
 
 #define MT_TO_FT 3.281
-#define AIRPORT_SPAN 0.25f
+#define AIRPORT_SPAN 0.18f
 
 static char current_airport[5] = "LHR";
 static char current_airport_name[64] = "London Heathrow";
@@ -198,7 +200,7 @@ void UpdatePlaneData() {
              "https://opensky-network.org/api/states/all?lamin=%.4f&lamax=%.4f&lomin=%.4f&lomax=%.4f",
              la_min, la_max, lo_min, lo_max);
 
-    //printf("%s\n", url);
+    printf("%s\n", url);
 
     //printf("Fetching airspace for %s...\n", current_airport);
     char* new_json = GetEndpoint(url);
@@ -227,6 +229,7 @@ typedef struct {
 static SelectedPlane selected_plane = { .active = false };
 
 // Raylib
+static bool active = true;
 void DrawRadarOutline() {
     const float cx = WINDOW_WIDTH / 2.0f;
     const float cy = WINDOW_HEIGHT / 2.0f;
@@ -276,9 +279,14 @@ void DrawRadarSpinner(const float current_angle) {
 
 void DrawPlanes(const char *json_data) {
     if (!json_data) return;
+    active = true;
 
     cJSON *root = cJSON_Parse(json_data);
-    if (!root) return;
+    if (!root) {
+        active = false;
+        //DrawText(TextFormat("No Data! Likely Received a 429"),10, 10, 20, GREEN);
+        return;
+    }
 
     cJSON *states = cJSON_GetObjectItemCaseSensitive(root, "states");
     if (cJSON_IsArray(states)) {
@@ -363,6 +371,14 @@ void DrawRadarScaleIndicator() {
     DrawText(scale_text, 20, y_pos, 16, DARKGREEN);
 }
 
+void DrawErrorMsg() {
+    const char* err_msg = "Could not receive data from OpenSky";
+    int font_size = 38;
+    DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Fade(BLACK, 0.6f));
+    const int text_width = MeasureText(err_msg, font_size);
+    DrawText(err_msg, WINDOW_WIDTH / 2 - text_width / 2, WINDOW_HEIGHT / 2 - (font_size / 2), font_size, GREEN);
+}
+
 // Airport Selector
 static bool show_airport_menu = false;
 
@@ -445,8 +461,6 @@ int main(void) {
     UpdateAirportBoundingBox("LHR");
     SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
 
-
-
     while (!WindowShouldClose()) {
         // Update
         angle += GetFrameTime() * RADAR_SPEED;
@@ -459,7 +473,6 @@ int main(void) {
             DrawRadarOutline();
             DrawRadarSpinner(angle);
             DrawPlanes(cached_json);
-
             DrawSelectedPlaneInfo();
 
             DrawAirport(current_airport);
@@ -467,9 +480,14 @@ int main(void) {
 
             DrawRadarScaleIndicator();
 
-            if (show_airport_menu) {
+            if (show_airport_menu && active) {
                 DrawAirportMenu();
             }
+
+            if (!active) {
+                DrawErrorMsg();
+            }
+
         EndDrawing();
     }
 
