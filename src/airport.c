@@ -3,7 +3,9 @@
 //
 
 #include <strings.h>
+#include <string.h>
 #include "config.h"
+#include "tokens.h"
 #include "airport.h"
 
 const Airport AIRPORT_DB[] = {
@@ -28,9 +30,15 @@ const Airport AIRPORT_DB[] = {
     { "EGTH", "Old Warden Aerodrome",    52.0867f,  -0.3186f }
 };
 
-const int AIRPORT_DB_COUNT = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
+const int AIRPORT_DB_COUNT = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]) + 1;
 
 bool GetAirportCoords(const char* iata, float *out_lat, float *out_lon) {
+    if (strcasecmp(iata, "HOME") == 0) {
+        *out_lat = custom_lat;
+        *out_lon = custom_lon;
+        return true;
+    }
+
     int count = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
     for (int i = 0; i < count; i++) {
         if (strcasecmp(AIRPORT_DB[i].code, iata) == 0) {
@@ -43,6 +51,11 @@ bool GetAirportCoords(const char* iata, float *out_lat, float *out_lon) {
 }
 
 bool GetAirportName(const char* iata, char* out_name) {
+    if (strcasecmp(iata, "HOME") == 0) {
+        strncpy(out_name, custom_name, 64);
+        return true;
+    }
+
     int count = sizeof(AIRPORT_DB) / sizeof(AIRPORT_DB[0]);
     for (int i = 0; i < count; i++) {
         if (strcasecmp(AIRPORT_DB[i].code, iata) == 0) {
@@ -62,9 +75,11 @@ void UpdateAirportBoundingBox(const char *icao) {
             strncpy(current_airport_name, "Unknown Name", 64);
         }
     } else {
-        TraceLog(LOG_WARNING, "Airport %s not found in DB, defaulting to LHR", icao);
-        center_lat = 51.4700;
-        center_lon = -0.4543f;
+        TraceLog(LOG_WARNING, "Airport %s not found in DB, defaulting to HOME", icao);
+        center_lat = custom_lat;
+        center_lon = custom_lon;
+        strncpy(current_airport, "HOME", 4);
+        strncpy(current_airport_name, custom_name, 64);
     }
 
     la_min = center_lat - AIRPORT_SPAN;

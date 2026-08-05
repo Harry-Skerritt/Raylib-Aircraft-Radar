@@ -1,13 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "raylib.h"
 #include "config.h"
 #include "api.h"
 #include "radar.h"
 #include "airport.h"
 #include "tokens.h"
-
-// Todo: Add OAuth2 for more requests
 
 // Global Vars
 char current_airport[5] = "LHR";
@@ -18,34 +17,43 @@ char *cached_json = NULL;
 float fetch_timer = 0.0f;
 bool active = true;
 bool show_airport_menu = false;
-
+bool show_setup_screen = false;
 
 int main(void) {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Flight Radar");
     if (!IsWindowReady()) return 1;
     SetTargetFPS(60);
 
-    if (!LoadCredentials("/Volumes/Data/Code/Projects/C++/Radar/creds.txt")) {
-        printf("Error: Could not load API creds. Exiting.\n");
-        CloseWindow();
-        return 1;
+    if (!LoadConfig("config.txt")) {
+        show_setup_screen = true;
+    } else {
+        strncpy(input_id, CLIENT_ID, sizeof(input_id));
+        strncpy(input_secret, CLIENT_SECRET, sizeof(input_secret));
+        snprintf(input_lat, sizeof(input_lat), "%.4f", custom_lat);
+        snprintf(input_lon, sizeof(input_lon), "%.4f", custom_lon);
+        strncpy(input_name, custom_name, sizeof(input_name));
+
+        UpdateAirportBoundingBox("HOME");
     }
 
     float angle = 0.0f;
-
-    // Default
-    UpdateAirportBoundingBox("LHR");
     SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
 
-    // Auth Token
-    // Todo: Show a page for user to set this up
-    Token token = GetToken();
+    if (!show_setup_screen) {
+        GetToken();
+    }
 
 
     while (!WindowShouldClose()) {
         // Update
-        angle += GetFrameTime() * RADAR_SPEED;
-        UpdatePlaneData();
+        if (IsKeyPressed(KEY_F1)) {
+            show_setup_screen = !show_setup_screen;
+        }
+
+        if (!show_setup_screen) {
+            angle += GetFrameTime() * RADAR_SPEED;
+            UpdatePlaneData();
+        }
 
         // Draw
         BeginDrawing();
@@ -61,11 +69,15 @@ int main(void) {
 
             DrawRadarScaleIndicator();
 
-            if (show_airport_menu && active) {
+            if (show_airport_menu && active && !show_setup_screen) {
                 DrawAirportMenu();
             }
 
-            if (!active) {
+            if (show_setup_screen) {
+                DrawSetupScreen();
+            }
+
+            if (!active && !show_setup_screen) {
                 DrawErrorMsg();
             }
 

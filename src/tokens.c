@@ -8,12 +8,17 @@
 #include "tokens.h"
 
 const char* TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
-char CLIENT_ID[128] = {0};
-char CLIENT_SECRET[128] = {0};
 const int TOKEN_REFRESH_MARGIN = 30; // 30s before expiry
 Token current_token = { .expiry_time = 0 };
 
-bool LoadCredentials(const char* filename) {
+char CLIENT_ID[128] = {0};
+char CLIENT_SECRET[128] = {0};
+float custom_lat = 0;
+float custom_lon = 0;
+char custom_name[64] = "My Location";
+
+// Config
+bool LoadConfig(const char* filename) {
     FILE *file = fopen(filename, "r");
     if (!file) {
         fprintf(stderr, "Failed to open file %s\n", filename);
@@ -22,18 +27,33 @@ bool LoadCredentials(const char* filename) {
 
     char buffer[256];
 
+    // Client ID
     if (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\r\n")] = 0;
         strncpy(CLIENT_ID, buffer, sizeof(CLIENT_ID) - 1);
     }
 
+    // Client Secret
     if (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\r\n")] = 0;
         strncpy(CLIENT_SECRET, buffer, sizeof(CLIENT_SECRET) - 1);
     }
 
-    fclose(file);
+    // Custom Lat & Lon
+    if (fgets(buffer, sizeof(buffer), file)) {
+        custom_lat = (float)atof(buffer);
+    }
+    if (fgets(buffer, sizeof(buffer), file)) {
+        custom_lon = (float)atof(buffer);
+    }
 
+    // Custom Name
+    if (fgets(buffer, sizeof(buffer), file)) {
+        buffer[strcspn(buffer, "\r\n")] = 0;
+        strncpy(custom_name, buffer, sizeof(custom_name) - 1);
+    }
+
+    fclose(file);
     if (strlen(CLIENT_ID) == 0 || strlen(CLIENT_SECRET) == 0) {
         fprintf(stderr, "Credentials file is empty or malformed\n");
         return false;
@@ -42,6 +62,25 @@ bool LoadCredentials(const char* filename) {
     return true;
 }
 
+bool SaveConfig(const char *filename, const char *client_id, const char *client_secret, float lat, float lon, const char *name) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        fprintf(stderr, "Failed to open file %s\n", filename);
+        return false;
+    }
+
+    fprintf(file, "%s\n%s\n%.4f\n%.4f\n%s\n", client_id, client_secret, lat, lon, name);
+    fclose(file);
+
+    strncpy(CLIENT_ID, client_id, sizeof(CLIENT_ID));
+    strncpy(CLIENT_SECRET, client_secret, sizeof(CLIENT_SECRET));
+    custom_lat = lat;
+    custom_lon = lon;
+    strncpy(custom_name, name, sizeof(custom_name));
+    return true;
+}
+
+// Tokens
 Token GetToken(void) {
     if (strlen(current_token.token) > 0 && time(NULL) < (current_token.expiry_time - TOKEN_REFRESH_MARGIN)) {
         return current_token;

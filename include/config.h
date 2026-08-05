@@ -53,6 +53,7 @@ extern char *cached_json;
 extern float fetch_timer;
 extern bool active;
 extern bool show_airport_menu;
+extern bool show_setup_screen;
 
 
 #endif //CONFIG_H

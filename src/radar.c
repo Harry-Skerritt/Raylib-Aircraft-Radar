@@ -11,9 +11,11 @@
 #include "airport.h"
 #include "radar.h"
 
+#include "tokens.h"
+
 
 // Radar Graphics
-void DrawRadarOutline() {
+void DrawRadarOutline(void) {
     const float cx = WINDOW_WIDTH / 2.0f;
     const float cy = WINDOW_HEIGHT / 2.0f;
     // Draw Lines (X/Y)
@@ -122,7 +124,7 @@ void DrawAirport(const char* airport_tag) {
 }
 
 // UI
-void DrawSelectedPlaneInfo() {
+void DrawSelectedPlaneInfo(void) {
     DrawRectangle(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, UI_BACKGROUND_COLOUR);
     DrawRectangleLines(0, WINDOW_HEIGHT - 60, WINDOW_WIDTH, 60, RADAR_COLOUR);
 
@@ -142,7 +144,7 @@ void DrawSelectedPlaneInfo() {
     }
 }
 
-void DrawRadarScaleIndicator() {
+void DrawRadarScaleIndicator(void) {
     float range_miles = GetRadarRangeMiles();
     float range_km = range_miles * 1.60934f;
 
@@ -153,7 +155,7 @@ void DrawRadarScaleIndicator() {
     DrawText(scale_text, 20, y_pos, 16, DARKGREEN);
 }
 
-void DrawErrorMsg() {
+void DrawErrorMsg(void) {
     const char* err_msg = "Could not receive data from OpenSky";
     int font_size = 38;
     DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Fade(BLACK, 0.6f));
@@ -161,11 +163,11 @@ void DrawErrorMsg() {
     DrawText(err_msg, WINDOW_WIDTH / 2 - text_width / 2, WINDOW_HEIGHT / 2 - (font_size / 2), font_size, GREEN);
 }
 
-void DrawAirportMenu() {
+void DrawAirportMenu(void) {
     int total_airports = AIRPORT_DB_COUNT;
 
     int menu_width = 300;
-    int menu_height = 400;
+    int menu_height = 420;
     int menu_x = WINDOW_WIDTH - menu_width - 10;
     int menu_y = 40;
 
@@ -187,10 +189,21 @@ void DrawAirportMenu() {
 
         bool is_hovered = CheckCollisionPointRec(mouse_pos, item_rect);
 
+        char code[8];
+        char name[64];
+
+        if (i == 0) {
+            strcpy(code, "HOME");
+            strncpy(name, custom_name, sizeof(name));
+        } else {
+            strcpy(code, AIRPORT_DB[i - 1].code);
+            strncpy(name, AIRPORT_DB[i - 1].name, sizeof(name));
+        }
+
         if (is_hovered) {
             DrawRectangleRec(item_rect, (Color){ 30, 80, 30, 255 });
             if (mouse_clicked) {
-                UpdateAirportBoundingBox(AIRPORT_DB[i].code);
+                UpdateAirportBoundingBox(code);
                 SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
                 show_airport_menu = false;
 
@@ -203,7 +216,7 @@ void DrawAirportMenu() {
             }
         }
 
-        DrawText(TextFormat("[%s] %s", AIRPORT_DB[i].code, AIRPORT_DB[i].name), menu_x + 10, item_y + 2, 12, LIGHTGRAY);
+        DrawText(TextFormat("[%s] %s", code, name), menu_x + 10, item_y + 2, 12, LIGHTGRAY);
     }
 }
 
@@ -227,4 +240,157 @@ void DrawAirportName(void) {
     }
 
     DrawText(display_text, x, y, font_size, GREEN);
+}
+
+// Setup Screen
+char input_id[128] = {0};
+char input_secret[128] = {0};
+char input_lat[32] = "0.0000";
+char input_lon[32] = "0.0000";
+char input_name[64] = "My Location";
+
+#define BORDER_WIDTH 2
+
+static int active_field = 0;
+
+void DrawSetupScreen(void) {
+    DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Fade(BLACK, 0.85));
+
+    int box_w = 480, box_h = 460;
+    int box_x = (WINDOW_WIDTH - box_w) / 2;
+    int box_y = (WINDOW_HEIGHT - box_h) / 2;
+
+    DrawRectangle(box_x, box_y, box_w, box_h, UI_BACKGROUND_COLOUR);
+    DrawRectangleLines(box_x, box_y, box_w, box_h, GREEN);
+
+    DrawText("FLIGHT RADAR SETUP", box_x + 20, box_y + 20, 18, YELLOW);
+    DrawText("Press F1 to return", box_x + box_w - 140, box_y + 25, 10, LIGHTGRAY);
+
+    DrawText("Visit 'https://opensky-network.org' to obtain an API ID & Secret", box_x + 20, box_y + 45, 10, LIGHTGRAY);
+
+    // Input Fields
+    Rectangle rect_id     = { (float)(box_x + 20), (float)(box_y + 85),  (float)(box_w - 40), 30 };
+    Rectangle rect_secret = { (float)(box_x + 20), (float)(box_y + 150), (float)(box_w - 40), 30 };
+    Rectangle rect_name   = { (float)(box_x + 20), (float)(box_y + 215), (float)(box_w - 40), 30 };
+    Rectangle rect_lat    = { (float)(box_x + 20), (float)(box_y + 280), (float)(box_w / 2 - 30), 30 };
+    Rectangle rect_lon    = { (float)(box_x + 250), (float)(box_y + 280), (float)(box_w / 2 - 30), 30 };
+    Rectangle rect_save   = { (float)(box_x + 20), (float)(box_y + 350), (float)(box_w - 40), 40 };
+
+    Vector2 mouse_pos = GetMousePosition();
+    bool clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+    if (clicked) {
+        if (CheckCollisionPointRec(mouse_pos, rect_id)) active_field = 1;
+        else if (CheckCollisionPointRec(mouse_pos, rect_secret)) active_field = 2;
+        else if (CheckCollisionPointRec(mouse_pos, rect_name)) active_field = 3;
+        else if (CheckCollisionPointRec(mouse_pos, rect_lat)) active_field = 4;
+        else if (CheckCollisionPointRec(mouse_pos, rect_lon)) active_field = 5;
+        else active_field = 0;
+    }
+
+    if (IsKeyPressed(KEY_TAB)) {
+        active_field = (active_field % 5) + 1;
+    }
+
+    char *target_buf = NULL;
+    int max_len = 127;
+    if (active_field == 1) { target_buf = input_id; max_len = sizeof(input_id) - 1; }
+    else if (active_field == 2) { target_buf = input_secret; max_len = sizeof(input_secret) - 1; }
+    else if (active_field == 3) { target_buf = input_name; max_len = sizeof(input_name) - 1; }
+    else if (active_field == 4) { target_buf = input_lat; max_len = sizeof(input_lat) - 1; }
+    else if (active_field == 5) { target_buf = input_lon; max_len = sizeof(input_lon) - 1; }
+
+    // Copy Paste
+    if (target_buf && ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                        IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) && IsKeyPressed(KEY_V))) {
+        const char *clipboard = GetClipboardText();
+        if (clipboard) {
+            strncat(target_buf, clipboard, max_len - strlen(target_buf));
+        }
+                        }
+
+    int key = GetCharPressed();
+    while (key > 0) {
+        if ((key >= 32) && (key <= 126) && target_buf) {
+            int len = (int)strlen(target_buf);
+            if (len < max_len) {
+                target_buf[len] = (char)key;
+                target_buf[len + 1] = '\0';
+            }
+        }
+        key = GetCharPressed();
+    }
+
+    // Backspace
+    if (target_buf) {
+        static float backspace_timer = 0.0f;
+        if (IsKeyPressed(KEY_BACKSPACE)) {
+            int len = strlen(target_buf);
+            if (len > 0) target_buf[len - 1] = '\0';
+            backspace_timer = 0.4f;
+        } else if (IsKeyReleased(KEY_BACKSPACE)) {
+            backspace_timer = 0.0f;
+        } else if (IsKeyDown(KEY_BACKSPACE)) {
+            backspace_timer -= GetFrameTime();
+            if (backspace_timer <= 0.0f) {
+                int len = strlen(target_buf);
+                if (len > 0) target_buf[len - 1] = '\0';
+                backspace_timer = 0.05f;
+            }
+        }
+    }
+
+
+    // Client ID Field
+    DrawText("OpenSky Client ID:", box_x + 20, box_y + 65, 12, LIGHTGRAY);
+    DrawRectangleRec(rect_id, (Color){ 20, 40, 20, 255 });
+    DrawRectangleLinesEx(rect_id, BORDER_WIDTH, active_field == 1 ? YELLOW : DARKGREEN);
+    DrawText(input_id, box_x + 28, box_y + 93, 14, GREEN);
+
+    // Client Secret Field
+    DrawText("OpenSky Client Secret:", box_x + 20, box_y + 130, 12, LIGHTGRAY);
+    DrawRectangleRec(rect_secret, (Color){ 20, 40, 20, 255 });
+    DrawRectangleLinesEx(rect_secret, BORDER_WIDTH, active_field == 2 ? YELLOW : DARKGREEN);
+    DrawText(input_secret, box_x + 28, box_y + 158, 14, GREEN);
+
+    // Custom Location Name Field
+    DrawText("Location Name (e.g. Home):", box_x + 20, box_y + 195, 12, LIGHTGRAY);
+    DrawRectangleRec(rect_name, (Color){ 20, 40, 20, 255 });
+    DrawRectangleLinesEx(rect_name, BORDER_WIDTH, active_field == 3 ? YELLOW : DARKGREEN);
+    DrawText(input_name, box_x + 28, box_y + 223, 14, GREEN);
+
+    // Latitude Field
+    DrawText("Latitude:", box_x + 20, box_y + 260, 12, LIGHTGRAY);
+    DrawRectangleRec(rect_lat, (Color){ 20, 40, 20, 255 });
+    DrawRectangleLinesEx(rect_lat, BORDER_WIDTH, active_field == 4 ? YELLOW : DARKGREEN);
+    DrawText(input_lat, box_x + 28, box_y + 288, 14, GREEN);
+
+    // Longitude Field
+    DrawText("Longitude:", box_x + 250, box_y + 260, 12, LIGHTGRAY);
+    DrawRectangleRec(rect_lon, (Color){ 20, 40, 20, 255 });
+    DrawRectangleLinesEx(rect_lon, BORDER_WIDTH, active_field == 5 ? YELLOW : DARKGREEN);
+    DrawText(input_lon, box_x + 258, box_y + 288, 14, GREEN);
+
+    // Save & Connect Button
+    bool save_hovered = CheckCollisionPointRec(mouse_pos, rect_save);
+    DrawRectangleRec(rect_save, save_hovered ? (Color){ 40, 120, 40, 255 } : (Color){ 20, 80, 20, 255 });
+    DrawRectangleLinesEx(rect_save, BORDER_WIDTH, GREEN);
+
+    int text_w = MeasureText("SAVE & CONNECT", 16);
+    DrawText("SAVE & CONNECT", box_x + (box_w - text_w) / 2, box_y + 362, 16, YELLOW);
+
+    if (save_hovered && clicked) {
+        if (strlen(input_id) > 0 && strlen(input_secret) > 0) {
+            float lat = (float)atof(input_lat);
+            float lon = (float)atof(input_lon);
+
+            SaveConfig("config.txt", input_id, input_secret, lat, lon, input_name);
+
+            UpdateAirportBoundingBox("HOME");
+            SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
+
+            RefreshToken();
+            show_setup_screen = false;
+        }
+    }
 }
