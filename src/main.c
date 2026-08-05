@@ -5,6 +5,7 @@
 #include "api.h"
 #include "radar.h"
 #include "airport.h"
+#include "tokens.h"
 
 // Todo: Add OAuth2 for more requests
 
@@ -24,11 +25,22 @@ int main(void) {
     if (!IsWindowReady()) return 1;
     SetTargetFPS(60);
 
+    if (!LoadCredentials("/Volumes/Data/Code/Projects/C++/Radar/creds.txt")) {
+        printf("Error: Could not load API creds. Exiting.\n");
+        CloseWindow();
+        return 1;
+    }
+
     float angle = 0.0f;
 
     // Default
     UpdateAirportBoundingBox("LHR");
     SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));
+
+    // Auth Token
+    // Todo: Show a page for user to set this up
+    Token token = GetToken();
+
 
     while (!WindowShouldClose()) {
         // Update

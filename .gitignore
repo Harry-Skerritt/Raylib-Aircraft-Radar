@@ -209,3 +209,4 @@ CMakeUserPresets.json
 # End of https://www.toptal.com/developers/gitignore/api/clion,cmake,c++,c
 
 .idea
+creds.txt

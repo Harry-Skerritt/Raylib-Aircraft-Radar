@@ -32,6 +32,7 @@ add_executable(${PROJECT_NAME} MACOSX_BUNDLE
         src/api.c
         src/radar.c
         src/airport.c
+        src/tokens.c
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
