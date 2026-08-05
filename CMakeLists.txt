@@ -25,7 +25,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 FetchContent_MakeAvailable(cjson)
 
-add_executable(${PROJECT_NAME} MACOSX_BUNDLE main.c)
+include_directories(include)
+
+add_executable(${PROJECT_NAME} MACOSX_BUNDLE
+        src/main.c
+        src/api.c
+        src/radar.c
+        src/airport.c
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         raylib
