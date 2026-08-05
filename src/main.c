@@ -19,12 +19,17 @@ bool active = true;
 bool show_airport_menu = false;
 bool show_setup_screen = false;
 
+float idle_timer = 0.0f;
+const float IDLE_TIMEOUT = 300.0f; // 5 Mins
+bool is_idle = false;
+
 int main(void) {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Flight Radar");
     if (!IsWindowReady()) return 1;
     SetTargetFPS(60);
 
-    if (!LoadConfig("config.txt")) {
+
+    if (!LoadConfig()) {
         show_setup_screen = true;
     } else {
         strncpy(input_id, CLIENT_ID, sizeof(input_id));
@@ -50,9 +55,22 @@ int main(void) {
             show_setup_screen = !show_setup_screen;
         }
 
-        if (!show_setup_screen) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) ||
+        GetMouseDelta().x != 0.0f || GetMouseDelta().y != 0.0f) {
+            idle_timer = 0.0f;
+            if (is_idle) is_idle = false;
+        } else {
+            idle_timer += GetFrameTime();
+        }
+
+        bool window_active = IsWindowFocused();
+
+        if (!show_setup_screen && idle_timer < IDLE_TIMEOUT) {
+            is_idle = false;
             angle += GetFrameTime() * RADAR_SPEED;
             UpdatePlaneData();
+        } else {
+            is_idle = true;
         }
 
         // Draw
@@ -68,6 +86,10 @@ int main(void) {
             DrawAirportName();
 
             DrawRadarScaleIndicator();
+
+            if (is_idle && !show_setup_screen) {
+                DrawIdleMsg();
+            }
 
             if (show_airport_menu && active && !show_setup_screen) {
                 DrawAirportMenu();

@@ -19,6 +19,7 @@ void DrawAirport(const char* airport_iata);
 void DrawSelectedPlaneInfo(void);
 void DrawRadarScaleIndicator(void);
 void DrawErrorMsg(void);
+void DrawIdleMsg(void);
 void DrawAirportMenu(void);
 void DrawAirportName(void);
 

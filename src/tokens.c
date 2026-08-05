@@ -18,10 +18,22 @@ float custom_lon = 0;
 char custom_name[64] = "My Location";
 
 // Config
-bool LoadConfig(const char* filename) {
-    FILE *file = fopen(filename, "r");
+bool GetConfigPath(char *out_path, size_t max_len) {
+    const char *home = getenv("HOME");
+    if (home) {
+        snprintf(out_path, max_len, "%s/flight_radar.config", home);
+        return true;
+    }
+    return false;
+}
+
+bool LoadConfig(void) {
+    char path[512];
+    GetConfigPath(path, sizeof(path));
+
+    FILE *file = fopen(path, "r");
     if (!file) {
-        fprintf(stderr, "Failed to open file %s\n", filename);
+        fprintf(stderr, "Failed to open file %s\n", path);
         return false;
     }
 
@@ -62,10 +74,13 @@ bool LoadConfig(const char* filename) {
     return true;
 }
 
-bool SaveConfig(const char *filename, const char *client_id, const char *client_secret, float lat, float lon, const char *name) {
-    FILE *file = fopen(filename, "w");
+bool SaveConfig(const char *client_id, const char *client_secret, float lat, float lon, const char *name) {
+    char path[512];
+    GetConfigPath(path, sizeof(path));
+
+    FILE *file = fopen(path, "w");
     if (!file) {
-        fprintf(stderr, "Failed to open file %s\n", filename);
+        fprintf(stderr, "Failed to open config for writing\n");
         return false;
     }
 

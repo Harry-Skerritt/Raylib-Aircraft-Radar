@@ -163,6 +163,14 @@ void DrawErrorMsg(void) {
     DrawText(err_msg, WINDOW_WIDTH / 2 - text_width / 2, WINDOW_HEIGHT / 2 - (font_size / 2), font_size, GREEN);
 }
 
+void DrawIdleMsg(void) {
+    const char* err_msg = "PAUSED - Move mouse or focus window to resume";
+    int font_size = 30;
+    DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Fade(BLACK, 0.6f));
+    const int text_width = MeasureText(err_msg, font_size);
+    DrawText(err_msg, WINDOW_WIDTH / 2 - text_width / 2, WINDOW_HEIGHT / 2 - (font_size / 2), font_size, GREEN);
+}
+
 void DrawAirportMenu(void) {
     int total_airports = AIRPORT_DB_COUNT;
 
@@ -245,8 +253,8 @@ void DrawAirportName(void) {
 // Setup Screen
 char input_id[128] = {0};
 char input_secret[128] = {0};
-char input_lat[32] = "0.0000";
-char input_lon[32] = "0.0000";
+char input_lat[32] = {0};
+char input_lon[32] = {0};
 char input_name[64] = "My Location";
 
 #define BORDER_WIDTH 2
@@ -259,6 +267,12 @@ void DrawSetupScreen(void) {
     int box_w = 480, box_h = 460;
     int box_x = (WINDOW_WIDTH - box_w) / 2;
     int box_y = (WINDOW_HEIGHT - box_h) / 2;
+
+    static bool initialised = false;
+    if (!initialised) {
+        active_field = 1;
+        initialised = true;
+    }
 
     DrawRectangle(box_x, box_y, box_w, box_h, UI_BACKGROUND_COLOUR);
     DrawRectangleLines(box_x, box_y, box_w, box_h, GREEN);
@@ -285,7 +299,10 @@ void DrawSetupScreen(void) {
         else if (CheckCollisionPointRec(mouse_pos, rect_name)) active_field = 3;
         else if (CheckCollisionPointRec(mouse_pos, rect_lat)) active_field = 4;
         else if (CheckCollisionPointRec(mouse_pos, rect_lon)) active_field = 5;
-        else active_field = 0;
+    }
+
+    if (active_field < 1 || active_field > 5) {
+        active_field = 1;
     }
 
     if (IsKeyPressed(KEY_TAB)) {
@@ -301,42 +318,33 @@ void DrawSetupScreen(void) {
     else if (active_field == 5) { target_buf = input_lon; max_len = sizeof(input_lon) - 1; }
 
     // Copy Paste
-    if (target_buf && ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
-                        IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) && IsKeyPressed(KEY_V))) {
+    bool ctrl_or_cmd = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                       IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+
+    if (target_buf && ctrl_or_cmd && IsKeyPressed(KEY_V)) {
         const char *clipboard = GetClipboardText();
         if (clipboard) {
             strncat(target_buf, clipboard, max_len - strlen(target_buf));
         }
-                        }
-
-    int key = GetCharPressed();
-    while (key > 0) {
-        if ((key >= 32) && (key <= 126) && target_buf) {
-            int len = (int)strlen(target_buf);
-            if (len < max_len) {
-                target_buf[len] = (char)key;
-                target_buf[len + 1] = '\0';
+    } else {
+        int key = GetCharPressed();
+        while (key > 0) {
+            if ((key >= 32) && (key <= 126) && target_buf) {
+                int len = (int)strlen(target_buf);
+                if (len < max_len) {
+                    target_buf[len] = (char)key;
+                    target_buf[len + 1] = '\0';
+                }
             }
+            key = GetCharPressed();
         }
-        key = GetCharPressed();
     }
 
     // Backspace
     if (target_buf) {
-        static float backspace_timer = 0.0f;
-        if (IsKeyPressed(KEY_BACKSPACE)) {
-            int len = strlen(target_buf);
+        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
+            int len = (int)strlen(target_buf);
             if (len > 0) target_buf[len - 1] = '\0';
-            backspace_timer = 0.4f;
-        } else if (IsKeyReleased(KEY_BACKSPACE)) {
-            backspace_timer = 0.0f;
-        } else if (IsKeyDown(KEY_BACKSPACE)) {
-            backspace_timer -= GetFrameTime();
-            if (backspace_timer <= 0.0f) {
-                int len = strlen(target_buf);
-                if (len > 0) target_buf[len - 1] = '\0';
-                backspace_timer = 0.05f;
-            }
         }
     }
 
@@ -384,7 +392,8 @@ void DrawSetupScreen(void) {
             float lat = (float)atof(input_lat);
             float lon = (float)atof(input_lon);
 
-            SaveConfig("config.txt", input_id, input_secret, lat, lon, input_name);
+
+            SaveConfig(input_id, input_secret, lat, lon, input_name);
 
             UpdateAirportBoundingBox("HOME");
             SetWindowTitle(TextFormat("Flight Radar - %s", current_airport_name));

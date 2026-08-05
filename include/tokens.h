@@ -25,8 +25,9 @@ extern float custom_lat, custom_lon;
 extern char custom_name[64];
 
 // Config
-bool LoadConfig(const char *filename);
-bool SaveConfig(const char *filename, const char *client_id, const char *client_secret, float lat, float lon, const char *name);
+bool GetConfigPath(char *out_path, size_t max_len);
+bool LoadConfig(void);
+bool SaveConfig(const char *client_id, const char *client_secret, float lat, float lon, const char *name);
 
 // Tokens
 Token GetToken(void);
